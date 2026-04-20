@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 # Page config
 # -----------------------------
 st.set_page_config(
-    page_title="Bank Term Deposit Subscription Predictor",
+    page_title="Bank Marketing Subscription Prediction",
     page_icon="📊",
     layout="wide"
 )
