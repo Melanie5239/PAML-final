@@ -1,19 +1,288 @@
-import streamlit as st
-import matplotlib.pyplot as plt
+import contextlib
+import io
+import os
+import tempfile
+from pathlib import Path
 
-# -----------------------------
-# Page config
-# -----------------------------
+os.environ.setdefault("MPLCONFIGDIR", tempfile.gettempdir())
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import streamlit as st
+
+import MODEL1_FINAL_前端 as ml
+
+
 st.set_page_config(
-    page_title="Bank Marketing Subscription Prediction",
+    page_title="Bank Marketing ML Dashboard",
     page_icon="📊",
-    layout="wide"
+    layout="wide",
 )
 
-# -----------------------------
-# Session state helpers
-# -----------------------------
-def init_state():
+
+MENU = {
+    "Data Exploration": "get_dataset_summary",
+    "Feature Description": "get_feature_descriptions",
+    "Preprocessing": "run_preprocessing_demo",
+    "Training": "train_pipeline",
+    "Evaluation": "run_evaluation",
+    "Threshold Analysis": "run_threshold_analysis",
+    "Feature Analysis": "run_feature_analysis",
+    "Prediction": "predict_single",
+}
+
+
+LOCAL_DATA = Path(__file__).with_name("bank-additional-full.csv")
+CACHE_VERSION = "prediction-nan-fix-v2"
+
+
+st.markdown(
+    """
+    <style>
+    .stApp {
+        background: #f8fafc;
+    }
+
+    .block-container {
+        max-width: 1280px;
+        padding-top: 2.4rem;
+        padding-bottom: 2rem;
+    }
+
+    section[data-testid="stSidebar"] {
+        background: #f1f5f9;
+        border-right: 1px solid #e2e8f0;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stRadio"] > label {
+        font-size: 1.05rem;
+        font-weight: 700;
+        color: #334155;
+    }
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] label {
+        padding: 0.7rem 0.85rem;
+        border-radius: 8px;
+        margin-bottom: 0.2rem;
+        background: transparent;
+    }
+
+    section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
+        background: #e2e8f0;
+    }
+
+    h1, h2, h3 {
+        color: #1f2937;
+        letter-spacing: 0;
+    }
+
+    div[data-testid="metric-container"] {
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+
+    .section-note {
+        color: #64748b;
+        font-size: 1.02rem;
+        margin-bottom: 1rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+def _read_local_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    data = pd.read_csv(LOCAL_DATA, sep=";")
+    X = data.drop(columns=["y"])
+    y = data[["y"]]
+    return X, y
+
+
+@st.cache_data(show_spinner="Loading dataset...")
+def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    if LOCAL_DATA.exists():
+        return _read_local_data()
+    with contextlib.redirect_stdout(io.StringIO()):
+        return ml.load_data()
+
+
+@st.cache_data(show_spinner=False)
+def split_data(X: pd.DataFrame, y: pd.DataFrame):
+    return ml.train_test_split_df(X, y, test_size=0.2, random_seed=42)
+
+
+@st.cache_data(show_spinner=False)
+def dataset_summary(X: pd.DataFrame, y: pd.DataFrame) -> dict:
+    return ml.get_dataset_summary(X, y)
+
+
+@st.cache_data(show_spinner=False)
+def feature_descriptions() -> pd.DataFrame:
+    return ml.get_feature_descriptions()
+
+
+@st.cache_data(show_spinner="Preparing preprocessing demo...")
+def preprocessing_demo(X_train_raw: pd.DataFrame, X_test_raw: pd.DataFrame) -> dict:
+    return ml.run_preprocessing_demo(X_train_raw, X_test_raw)
+
+
+@st.cache_resource(show_spinner="Training model once for this session...")
+def trained_pipeline(
+    X_train_raw: pd.DataFrame,
+    X_test_raw: pd.DataFrame,
+    y_train_raw: pd.DataFrame,
+    y_test_raw: pd.DataFrame,
+    cache_version: str,
+) -> dict:
+    with contextlib.redirect_stdout(io.StringIO()):
+        return ml.train_pipeline(
+            X_train_raw,
+            X_test_raw,
+            y_train_raw,
+            y_test_raw,
+            learning_rate=0.01,
+            n_iterations=1000,
+        )
+
+
+@st.cache_data(show_spinner=False)
+def evaluation_result(pipeline_signature: str, threshold: float) -> dict:
+    state = st.session_state[pipeline_signature]
+    return ml.run_evaluation(
+        state["model"],
+        state["X_train"],
+        state["y_train"],
+        state["X_test"],
+        state["y_test"],
+        threshold=threshold,
+    )
+
+
+@st.cache_data(show_spinner="Running threshold analysis...")
+def threshold_result(pipeline_signature: str) -> dict:
+    state = st.session_state[pipeline_signature]
+    return ml.run_threshold_analysis(state["model"], state["X_test"], state["y_test"])
+
+
+@st.cache_data(show_spinner="Running feature analysis...")
+def feature_result(pipeline_signature: str, top_n: int) -> dict:
+    state = st.session_state[pipeline_signature]
+    with contextlib.redirect_stdout(io.StringIO()):
+        return ml.run_feature_analysis(
+            state["model"],
+            state["preprocessor"],
+            state["X_train_raw"],
+            state["X_test_raw"],
+            state["y_train"],
+            state["y_test"],
+            top_n=top_n,
+        )
+
+
+def metric_grid(metrics: dict, columns: int = 4):
+    cols = st.columns(columns)
+    for idx, (label, value) in enumerate(metrics.items()):
+        display = f"{value:.4f}" if isinstance(value, float) else value
+        cols[idx % columns].metric(label, display)
+
+
+def show_table(df: pd.DataFrame, height: int | None = None):
+    if height is None:
+        st.dataframe(df, width="stretch", hide_index=True)
+    else:
+        st.dataframe(df, width="stretch", hide_index=True, height=height)
+
+
+def show_dict_table(data: dict, key_name: str = "Item", value_name: str = "Value"):
+    if not data:
+        st.info("No values to display.")
+        return
+    show_table(pd.DataFrame([{key_name: k, value_name: v} for k, v in data.items()]))
+
+
+def plot_loss(loss_df: pd.DataFrame):
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.plot(loss_df["iteration"], loss_df["loss"], color="#2563eb", linewidth=2)
+    ax.set_xlabel("Iteration")
+    ax.set_ylabel("Loss")
+    ax.set_title("Training Loss")
+    ax.grid(alpha=0.25)
+    st.pyplot(fig, width="stretch")
+
+
+def plot_coefficients(df: pd.DataFrame, title: str, color: str):
+    fig, ax = plt.subplots(figsize=(8, 4.8))
+    ordered = df.sort_values("coefficient")
+    ax.barh(ordered["feature"], ordered["coefficient"], color=color)
+    ax.set_title(title)
+    ax.set_xlabel("Coefficient")
+    ax.grid(axis="x", alpha=0.25)
+    st.pyplot(fig, width="stretch")
+
+
+def plot_probability_donut(prob: float):
+    if not np.isfinite(prob):
+        prob = 0.0
+    prob = min(max(float(prob), 0.0), 1.0)
+
+    fig, ax = plt.subplots(figsize=(3.5, 3.5))
+    values = [prob, 1 - prob]
+    colors = ["#2563eb", "#dbeafe"]
+
+    ax.pie(
+        values,
+        startangle=90,
+        counterclock=False,
+        colors=colors,
+        wedgeprops=dict(width=0.28, edgecolor="white"),
+    )
+    ax.text(
+        0,
+        0.02,
+        f"{prob:.0%}",
+        ha="center",
+        va="center",
+        fontsize=24,
+        fontweight="bold",
+        color="#1e3a8a",
+    )
+    ax.text(
+        0,
+        -0.18,
+        "subscription likelihood",
+        ha="center",
+        va="center",
+        fontsize=9,
+        color="#64748b",
+    )
+    ax.set(aspect="equal")
+    plt.tight_layout()
+    return fig
+
+
+def complete_prediction_features(visible_features: dict, X_reference: pd.DataFrame) -> dict:
+    model_features = {}
+    for column in X_reference.columns:
+        if column in visible_features:
+            model_features[column] = visible_features[column]
+        elif pd.api.types.is_numeric_dtype(X_reference[column]):
+            model_features[column] = float(X_reference[column].median())
+        else:
+            mode = X_reference[column].mode()
+            model_features[column] = mode.iloc[0] if not mode.empty else "unknown"
+    model_features.update(visible_features)
+    return model_features
+
+
+def prediction_form(pipeline_state: dict, X_reference: pd.DataFrame):
+    st.markdown(
+        '<p class="section-note">Enter customer information, submit, and score it with `predict_single` using the cached trained model.</p>',
+        unsafe_allow_html=True,
+    )
     defaults = {
         "age": 35,
         "job": "admin.",
@@ -26,525 +295,98 @@ def init_state():
         "campaign": 1,
         "poutcome": "success",
     }
-    for k, v in defaults.items():
-        if k not in st.session_state:
-            st.session_state[k] = v
 
+    form_col, result_col = st.columns([1.35, 1], gap="large")
+
+    with form_col:
+        st.subheader("Customer Information")
+        if st.button("Reset Inputs"):
+            for key, value in defaults.items():
+                st.session_state[f"pred_{key}"] = value
+
+        for key, value in defaults.items():
+            st.session_state.setdefault(f"pred_{key}", value)
+
+        job_options = [
+            "admin.",
+            "blue-collar",
+            "entrepreneur",
+            "housemaid",
+            "management",
+            "retired",
+            "self-employed",
+            "services",
+            "student",
+            "technician",
+            "unemployed",
+            "unknown",
+        ]
+        education_options = [
+            "primary",
+            "secondary",
+            "tertiary",
+            "basic.4y",
+            "basic.6y",
+            "basic.9y",
+            "high.school",
+            "professional.course",
+            "university.degree",
+            "unknown",
+        ]
+
+        with st.form("prediction_form"):
+            c1, c2 = st.columns(2, gap="medium")
+            with c1:
+                age = st.slider("Age", 18, 100, st.session_state.pred_age, key="pred_age")
+                job = st.selectbox(
+                    "Job",
+                    job_options,
+                    index=job_options.index(st.session_state.pred_job)
+                    if st.session_state.pred_job in job_options else 0,
+                    key="pred_job",
+                )
+                marital = st.selectbox(
+                    "Marital",
+                    ["single", "married", "divorced", "unknown"],
+                    key="pred_marital",
+                )
+                education = st.selectbox(
+                    "Education",
+                    education_options,
+                    index=education_options.index(st.session_state.pred_education)
+                    if st.session_state.pred_education in education_options else 0,
+                    key="pred_education",
+                )
+                balance = st.number_input("Balance", value=st.session_state.pred_balance, key="pred_balance")
+
+            with c2:
+                housing = st.radio("Housing Loan", ["yes", "no", "unknown"], key="pred_housing")
+                loan = st.radio("Personal Loan", ["yes", "no", "unknown"], key="pred_loan")
+                contact = st.selectbox(
+                    "Contact Type",
+                    ["cellular", "telephone", "unknown"],
+                    key="pred_contact",
+                )
+                campaign = st.number_input(
+                    "Campaign Contacts",
+                    min_value=1,
+                    value=st.session_state.pred_campaign,
+                    key="pred_campaign",
+                )
+                poutcome = st.selectbox(
+                    "Previous Outcome",
+                    ["success", "failure", "nonexistent", "unknown"],
+                    key="pred_poutcome",
+                )
+
+            submitted = st.form_submit_button("Predict", width="stretch")
+
+    with result_col:
+        st.subheader("Prediction Result")
+        if not submitted:
+            st.info("Enter customer information and click Predict to generate the result.")
+            return
 
-def reset_inputs():
-    st.session_state.age = 35
-    st.session_state.job = "admin."
-    st.session_state.marital = "single"
-    st.session_state.education = "primary"
-    st.session_state.balance = 1000
-    st.session_state.housing = "yes"
-    st.session_state.loan = "yes"
-    st.session_state.contact = "cellular"
-    st.session_state.campaign = 1
-    st.session_state.poutcome = "success"
-
-
-init_state()
-
-# -----------------------------
-# Placeholder prediction logic
-# -----------------------------
-def placeholder_predict(features):
-    score = 0.35
-
-    if 30 <= features["age"] <= 55:
-        score += 0.08
-    if features["balance"] > 1500:
-        score += 0.18
-    if features["poutcome"] == "success":
-        score += 0.22
-    if features["contact"] == "cellular":
-        score += 0.07
-    if features["campaign"] <= 2:
-        score += 0.05
-    if features["housing"] == "no":
-        score += 0.03
-    if features["loan"] == "no":
-        score += 0.02
-
-    score = min(max(score, 0.05), 0.95)
-    label = "Subscribe" if score >= 0.50 else "Not Subscribe"
-    return label, score
-
-
-def get_confidence(prob):
-    if prob >= 0.80:
-        return "High"
-    elif prob >= 0.60:
-        return "Medium"
-    return "Low"
-
-
-def get_recommendation(prob):
-    if prob >= 0.75:
-        return "Prioritize this customer for immediate follow-up."
-    elif prob >= 0.55:
-        return "Consider follow-up in the next outreach round."
-    return "Low priority for the current campaign."
-
-
-def plot_probability_donut(prob):
-    fig, ax = plt.subplots(figsize=(3.5, 3.5))
-    values = [prob, 1 - prob]
-    colors = ["#2563eb", "#dbeafe"]
-
-    ax.pie(
-        values,
-        startangle=90,
-        counterclock=False,
-        colors=colors,
-        wedgeprops=dict(width=0.28, edgecolor="white")
-    )
-
-    ax.text(
-        0, 0.02,
-        f"{prob:.0%}",
-        ha="center",
-        va="center",
-        fontsize=24,
-        fontweight="bold",
-        color="#1e3a8a"
-    )
-    ax.text(
-        0, -0.18,
-        "subscription likelihood",
-        ha="center",
-        va="center",
-        fontsize=9,
-        color="#64748b"
-    )
-
-    ax.set(aspect="equal")
-    plt.tight_layout()
-    return fig
-
-
-# -----------------------------
-# Custom CSS
-# -----------------------------
-st.markdown("""
-<style>
-/* Global */
-.stApp {
-    background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
-}
-
-.block-container {
-    max-width: 1320px;
-    padding-top: 2.2rem;
-    padding-bottom: 2rem;
-}
-
-/* Sidebar */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #f6f9ff 0%, #ebf2ff 100%);
-    border-right: 1px solid rgba(59,130,246,0.10);
-    width: 250px !important;
-    min-width: 250px !important;
-    max-width: 250px !important;
-}
-
-section[data-testid="stSidebar"] * {
-    color: #1e3a8a !important;
-}
-
-section[data-testid="stSidebar"] .stMarkdown p,
-section[data-testid="stSidebar"] div,
-section[data-testid="stSidebar"] label {
-    font-size: 1.08rem !important;
-    line-height: 1.55 !important;
-}
-
-.sidebar-title {
-    font-size: 1.35rem;
-    font-weight: 800;
-    color: #1d4ed8;
-    margin-bottom: 0.6rem;
-}
-
-.sidebar-box {
-    background: rgba(255,255,255,0.75);
-    border: 1px solid rgba(59,130,246,0.08);
-    border-radius: 16px;
-    padding: 1rem;
-    box-shadow: 0 8px 22px rgba(37,99,235,0.06);
-}
-
-/* Header */
-.main-title {
-    font-size: 2.65rem;
-    font-weight: 800;
-    color: #1e3a8a;
-    line-height: 1.15;
-    margin-bottom: 0.2rem;
-    letter-spacing: -0.02em;
-}
-
-.subtitle-text {
-    font-size: 1.05rem;
-    color: #64748b;
-    margin-bottom: 1.2rem;
-}
-
-/* Top title bars */
-.top-title-box {
-    background: #ffffff;
-    border-radius: 18px;
-    padding: 0.95rem 1.2rem;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.07);
-    border: 1px solid rgba(59,130,246,0.08);
-    margin-bottom: 0.7rem;
-    transition: all 0.25s ease;
-}
-
-.top-title-box:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 14px 28px rgba(37, 99, 235, 0.12);
-}
-
-.top-title-text {
-    font-size: 1.7rem;
-    font-weight: 800;
-    color: #1d4ed8;
-    line-height: 1.2;
-    margin: 0;
-}
-
-.how-to-box {
-    background: #ffffff;
-    border-radius: 18px;
-    padding: 1rem 1.2rem;
-    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.07);
-    border: 1px solid rgba(59,130,246,0.08);
-    margin-bottom: 1rem;
-}
-
-.how-to-title {
-    font-size: 1.15rem;
-    font-weight: 800;
-    color: #1d4ed8;
-    margin-bottom: 0.35rem;
-}
-
-.how-to-text {
-    font-size: 1rem;
-    color: #475569;
-    line-height: 1.6;
-    margin: 0;
-}
-
-/* Panels */
-.panel-box {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 1.35rem;
-    box-shadow: 0 8px 24px rgba(37,99,235,0.08);
-    border: 1px solid rgba(59,130,246,0.08);
-    transition: all 0.25s ease;
-}
-
-.panel-box:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 14px 30px rgba(37,99,235,0.14);
-}
-
-/* Field labels */
-.big-label {
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: #1e3a8a;
-    margin-top: 0.35rem;
-    margin-bottom: 0.3rem;
-    line-height: 1.2;
-}
-
-/* Widget labels */
-.stSelectbox label,
-.stNumberInput label,
-.stSlider label,
-.stRadio label {
-    font-size: 1.15rem !important;
-    font-weight: 700 !important;
-    color: #1e3a8a !important;
-}
-
-/* Inputs */
-div[data-baseweb="select"] > div {
-    min-height: 54px !important;
-    font-size: 1.2rem !important;
-    font-weight: 600 !important;
-    color: #0f172a !important;
-    border-radius: 12px !important;
-    transition: all 0.2s ease !important;
-}
-
-div[data-baseweb="select"] > div:hover {
-    border-color: #60a5fa !important;
-    box-shadow: 0 0 0 3px rgba(96,165,250,0.15) !important;
-}
-
-div[data-baseweb="select"] span {
-    font-size: 1.2rem !important;
-    font-weight: 600 !important;
-    color: #0f172a !important;
-}
-
-div[role="listbox"] ul li,
-div[role="option"] {
-    font-size: 1.1rem !important;
-    font-weight: 600 !important;
-}
-
-.stNumberInput input {
-    font-size: 1.2rem !important;
-    font-weight: 600 !important;
-    color: #0f172a !important;
-}
-
-.stNumberInput input:hover {
-    border-color: #60a5fa !important;
-    box-shadow: 0 0 0 3px rgba(96,165,250,0.15) !important;
-}
-
-div[role="radiogroup"] label p,
-div[role="radiogroup"] label span {
-    font-size: 1.15rem !important;
-    font-weight: 600 !important;
-    color: #0f172a !important;
-}
-
-.stSlider div[data-baseweb="slider"] * {
-    font-size: 1.05rem !important;
-    font-weight: 600 !important;
-}
-
-/* Buttons */
-.stButton > button,
-.stFormSubmitButton > button {
-    background: linear-gradient(90deg, #3b82f6, #2563eb);
-    color: white;
-    font-weight: 800;
-    font-size: 1.05rem;
-    border-radius: 12px;
-    height: 3rem;
-    border: none;
-    transition: all 0.25s ease;
-    box-shadow: 0 8px 18px rgba(37,99,235,0.18);
-}
-
-.stButton > button:hover,
-.stFormSubmitButton > button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 14px 24px rgba(37,99,235,0.28);
-    background: linear-gradient(90deg, #2563eb, #1d4ed8);
-}
-
-/* Metric cards */
-div[data-testid="metric-container"] {
-    background: #f5f8ff;
-    border-radius: 14px;
-    padding: 14px;
-    transition: all 0.25s ease;
-    border: 1px solid transparent;
-}
-
-div[data-testid="metric-container"]:hover {
-    transform: translateY(-3px);
-    border-color: #bfdbfe;
-    box-shadow: 0 10px 24px rgba(59,130,246,0.12);
-}
-
-div[data-testid="metric-container"] label {
-    font-size: 1.08rem !important;
-    font-weight: 800 !important;
-    color: #1e3a8a !important;
-}
-
-div[data-testid="metric-container"] [data-testid="stMetricValue"] {
-    font-size: 1.5rem !important;
-    font-weight: 800 !important;
-    color: #0f172a !important;
-}
-
-/* Result labels */
-.result-subtitle {
-    font-size: 1.08rem;
-    font-weight: 800;
-    color: #1e3a8a;
-    margin-bottom: 0.45rem;
-}
-
-/* Recommendation */
-.recommendation {
-    background: #e0f2fe;
-    padding: 14px 16px;
-    border-radius: 12px;
-    font-weight: 800;
-    font-size: 1.15rem;
-    color: #0f172a;
-    line-height: 1.4;
-    transition: all 0.25s ease;
-}
-
-.recommendation:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 20px rgba(14,165,233,0.12);
-}
-
-.disclaimer {
-    margin-top: 10px;
-    font-size: 0.95rem;
-    color: #64748b;
-    line-height: 1.5;
-}
-
-.info-row {
-    margin-top: 0.4rem;
-    margin-bottom: 0.8rem;
-}
-
-.result-divider {
-    height: 0.75rem;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# -----------------------------
-# Header
-# -----------------------------
-st.markdown(
-    '<div class="main-title">Bank Term Deposit Subscription Predictor</div>',
-    unsafe_allow_html=True
-)
-st.markdown(
-    '<div class="subtitle-text">Predict subscription likelihood from customer and campaign inputs.</div>',
-    unsafe_allow_html=True
-)
-st.markdown(
-    """
-    <div class="how-to-box">
-        <div class="how-to-title">How to Use</div>
-        <p class="how-to-text">Enter customer information, click Predict, and review the predicted outcome, probability, and recommended next action.</p>
-    </div>
-    """,
-    unsafe_allow_html=True
-)
-st.button("Reset Inputs", on_click=reset_inputs, use_container_width=False)
-
-# -----------------------------
-# Layout
-# -----------------------------
-col1, col2 = st.columns([1.35, 1], gap="medium")
-
-# -----------------------------
-# Left column: form
-# -----------------------------
-with col1:
-    st.markdown(
-        '<div class="top-title-box"><div class="top-title-text">Customer Information</div></div>',
-        unsafe_allow_html=True
-    )
-
-    with st.form("prediction_form"):
-        form_col1, form_col2 = st.columns(2, gap="medium")
-
-        with form_col1:
-            st.markdown('<div class="big-label">Age</div>', unsafe_allow_html=True)
-            age = st.slider("", 18, 100, st.session_state.age, key="age", label_visibility="collapsed")
-
-            st.markdown('<div class="big-label">Job</div>', unsafe_allow_html=True)
-            job = st.selectbox(
-                "",
-                ["admin.", "technician", "services", "management", "retired", "student"],
-                index=["admin.", "technician", "services", "management", "retired", "student"].index(st.session_state.job)
-                if st.session_state.job in ["admin.", "technician", "services", "management", "retired", "student"]
-                else 0,
-                key="job",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Marital</div>', unsafe_allow_html=True)
-            marital = st.selectbox(
-                "",
-                ["single", "married", "divorced"],
-                index=["single", "married", "divorced"].index(st.session_state.marital),
-                key="marital",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Education</div>', unsafe_allow_html=True)
-            education = st.selectbox(
-                "",
-                ["primary", "secondary", "tertiary"],
-                index=["primary", "secondary", "tertiary"].index(st.session_state.education)
-                if st.session_state.education in ["primary", "secondary", "tertiary"] else 0,
-                key="education",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Balance</div>', unsafe_allow_html=True)
-            balance = st.number_input("", value=st.session_state.balance, key="balance", label_visibility="collapsed")
-
-        with form_col2:
-            st.markdown('<div class="big-label">Housing Loan</div>', unsafe_allow_html=True)
-            housing = st.radio(
-                "",
-                ["yes", "no"],
-                index=["yes", "no"].index(st.session_state.housing),
-                key="housing",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Personal Loan</div>', unsafe_allow_html=True)
-            loan = st.radio(
-                "",
-                ["yes", "no"],
-                index=["yes", "no"].index(st.session_state.loan),
-                key="loan",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Contact Type</div>', unsafe_allow_html=True)
-            contact = st.selectbox(
-                "",
-                ["cellular", "telephone"],
-                index=["cellular", "telephone"].index(st.session_state.contact)
-                if st.session_state.contact in ["cellular", "telephone"] else 0,
-                key="contact",
-                label_visibility="collapsed"
-            )
-
-            st.markdown('<div class="big-label">Campaign Contacts</div>', unsafe_allow_html=True)
-            campaign = st.number_input("", value=st.session_state.campaign, min_value=1, key="campaign", label_visibility="collapsed")
-
-            st.markdown('<div class="big-label">Previous Outcome</div>', unsafe_allow_html=True)
-            poutcome = st.selectbox(
-                "",
-                ["success", "failure", "unknown"],
-                index=["success", "failure", "unknown"].index(st.session_state.poutcome)
-                if st.session_state.poutcome in ["success", "failure", "unknown"] else 0,
-                key="poutcome",
-                label_visibility="collapsed"
-            )
-
-        st.write("")
-        submit = st.form_submit_button("Predict", use_container_width=True)
-
-# -----------------------------
-# Right column: results
-# -----------------------------
-with col2:
-    st.markdown(
-        '<div class="top-title-box"><div class="top-title-text">Prediction Result</div></div>',
-        unsafe_allow_html=True
-    )
-
-    if submit:
         features = {
             "age": age,
             "job": job,
@@ -558,37 +400,167 @@ with col2:
             "poutcome": poutcome,
         }
 
-        label, prob = placeholder_predict(features)
-        confidence = get_confidence(prob)
-        recommendation = get_recommendation(prob)
+        model_features = complete_prediction_features(features, X_reference)
+        result = ml.predict_single(
+            model_features,
+            model=pipeline_state["model"],
+            preprocessor=pipeline_state["preprocessor"],
+        )
+        probability = float(result["probability"])
+        primary_label = "Subscribe" if result["predictions"].get(0.5, 0) else "Not Subscribe"
 
-        metric_col1, metric_col2 = st.columns(2, gap="small")
-        with metric_col1:
-            st.metric("Predicted Outcome", label)
-        with metric_col2:
-            st.metric("Probability", f"{prob:.2%}")
+        m1, m2 = st.columns(2)
+        m1.metric("Predicted Outcome", primary_label)
+        m2.metric("Probability", result["probability_pct"])
+        st.metric("Confidence", result["risk_level"])
 
-        st.markdown('<div class="info-row"></div>', unsafe_allow_html=True)
-        st.metric("Confidence", confidence)
+        d1, d2 = st.columns([1, 1.1], gap="small")
+        with d1:
+            st.pyplot(plot_probability_donut(probability), width="content")
+        with d2:
+            st.markdown("**Recommended Action**")
+            st.success(result["interpretation"])
 
-        st.markdown('<div class="result-divider"></div>', unsafe_allow_html=True)
+        st.subheader("Threshold Decisions")
+        show_table(result["predictions_df"])
 
-        donut_col1, donut_col2 = st.columns([1, 1.1], gap="small")
-        with donut_col1:
-            donut_fig = plot_probability_donut(prob)
-            st.pyplot(donut_fig, use_container_width=False)
 
-        with donut_col2:
-            st.markdown('<div class="result-subtitle">Recommended Action</div>', unsafe_allow_html=True)
-            st.markdown(
-                f'<div class="recommendation">{recommendation}</div>',
-                unsafe_allow_html=True
-            )
+X_raw, y_raw = load_data()
+X_train_raw, X_test_raw, y_train_raw, y_test_raw = split_data(X_raw, y_raw)
+pipeline_state = trained_pipeline(X_train_raw, X_test_raw, y_train_raw, y_test_raw, CACHE_VERSION)
+st.session_state["cached_pipeline_state"] = pipeline_state
 
-            st.markdown(
-                '<div class="disclaimer">This tool supports decision-making only and should not replace human judgment.</div>',
-                unsafe_allow_html=True
-            )
+with st.sidebar:
+    st.markdown("### Menu")
+    selected = st.radio(
+        "Pipeline step",
+        list(MENU.keys()),
+        index=0,
+        label_visibility="collapsed",
+    )
 
-    else:
-        st.info("Enter customer information and click Predict to generate the result.")
+st.title("Bank Marketing Subscription Prediction")
+st.caption(f"Selected API: `{MENU[selected]}`")
+
+
+if selected == "Data Exploration":
+    summary = dataset_summary(X_raw, y_raw)
+    metric_grid(
+        {
+            "Total Samples": f"{summary['total_samples']:,}",
+            "Features": summary["n_features"],
+            "Subscribed": f"{summary['n_subscribed']:,}",
+            "Positive Rate": f"{summary['positive_rate_pct']:.2f}%",
+        }
+    )
+    st.subheader("Class Distribution")
+    st.bar_chart(summary["class_distribution_df"].set_index("label")["count"])
+    st.subheader("Numeric Feature Statistics")
+    show_table(summary["numeric_stats_df"])
+    st.subheader("Unknown Value Audit")
+    show_dict_table(summary["unknown_counts"], "Feature", "Unknown Count")
+
+elif selected == "Feature Description":
+    st.markdown('<p class="section-note">Feature metadata returned by `get_feature_descriptions`.</p>', unsafe_allow_html=True)
+    show_table(feature_descriptions(), height=560)
+
+elif selected == "Preprocessing":
+    demo = preprocessing_demo(X_train_raw, X_test_raw)
+    metric_grid(
+        {
+            "Train Samples": f"{demo['n_train_samples']:,}",
+            "Test Samples": f"{demo['n_test_samples']:,}",
+            "Original Features": demo["n_features_original"],
+            "Encoded Features": demo["n_features_encoded"],
+        }
+    )
+    st.subheader("Pipeline Steps")
+    st.write(pd.DataFrame({"Step": demo["steps"]}))
+    st.subheader("Unknown Counts")
+    show_dict_table(demo["unknown_counts"], "Feature", "Unknown Count")
+    st.subheader("Imputation Values")
+    show_table(demo["imputation_df"])
+    st.subheader("One-Hot Encoding Summary")
+    show_table(demo["ohe_summary_df"])
+    st.subheader("Scaling Check")
+    show_table(demo["scaling_df"])
+
+elif selected == "Training":
+    metric_grid(
+        {
+            "Learning Rate": pipeline_state["learning_rate"],
+            "Iterations": pipeline_state["n_iterations"],
+            "Encoded Features": pipeline_state["n_features"],
+            "Final Loss": pipeline_state["final_loss"],
+        }
+    )
+    st.subheader("Test Metrics")
+    metric_grid(pipeline_state["test_metrics"])
+    st.subheader("Training Loss")
+    plot_loss(pipeline_state["loss_df"])
+    st.subheader("Saved Artifacts")
+    show_dict_table(
+        {
+            "Model": pipeline_state["model_path"],
+            "Preprocessor": pipeline_state["preprocessor_path"],
+        },
+        "Artifact",
+        "Path",
+    )
+
+elif selected == "Evaluation":
+    threshold = st.slider("Decision threshold", 0.05, 0.95, 0.50, 0.05)
+    result = evaluation_result("cached_pipeline_state", threshold)
+    st.subheader("Metrics")
+    show_table(result["metrics_df"])
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Train Confusion Matrix")
+        show_dict_table(result["train_cm"], "Cell", "Count")
+    with col2:
+        st.subheader("Test Confusion Matrix")
+        show_dict_table(result["test_cm"], "Cell", "Count")
+    st.subheader("Sample Predictions")
+    show_table(result["sample_predictions_df"])
+
+elif selected == "Threshold Analysis":
+    result = threshold_result("cached_pipeline_state")
+    metric_grid(
+        {
+            "Best F1 Threshold": result["best_f1_threshold"],
+            "Best F1": result["best_f1_value"],
+            "Best Recall Threshold": result["best_recall_threshold"],
+            "Best Recall": result["best_recall_value"],
+        }
+    )
+    st.subheader("Sensitivity")
+    st.line_chart(result["sensitivity_df"].set_index("Threshold"))
+    show_table(result["sensitivity_df"])
+    st.subheader("Business Comparison")
+    show_table(result["business_df"])
+    st.info(result["interpretation"])
+
+elif selected == "Feature Analysis":
+    top_n = st.slider("Top features", 5, 20, 10, 1)
+    result = feature_result("cached_pipeline_state", top_n)
+    metric_grid(
+        {
+            "Most Positive": result["most_positive_feature"],
+            "Positive Coef": result["most_positive_coef"],
+            "Most Negative": result["most_negative_feature"],
+            "Negative Coef": result["most_negative_coef"],
+        },
+        columns=2,
+    )
+    col1, col2 = st.columns(2)
+    with col1:
+        plot_coefficients(result["top_positive_df"], "Top Positive Coefficients", "#16a34a")
+    with col2:
+        plot_coefficients(result["top_negative_df"], "Top Negative Coefficients", "#dc2626")
+    st.subheader("Learning Rate Sensitivity")
+    show_table(result["lr_sensitivity_df"])
+    st.subheader("Duration Ablation")
+    show_table(result["ablation_df"])
+
+elif selected == "Prediction":
+    prediction_form(pipeline_state, X_raw)

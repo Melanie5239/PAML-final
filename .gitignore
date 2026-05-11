@@ -1,0 +1,6 @@
+__pycache__/
+*.py[cod]
+.vscode/
+
+lr_model.pkl
+preprocessor.pkl
