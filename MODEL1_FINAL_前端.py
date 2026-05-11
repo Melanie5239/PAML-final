@@ -14,11 +14,7 @@ import pickle
 import contextlib
 import numpy as np
 import pandas as pd
-
-try:
-    from ucimlrepo import fetch_ucirepo
-except ModuleNotFoundError:
-    fetch_ucirepo = None
+from ucimlrepo import fetch_ucirepo
 
 
 # ============================================================
@@ -26,10 +22,6 @@ except ModuleNotFoundError:
 # ============================================================
 
 def load_data():
-    if fetch_ucirepo is None:
-        raise ModuleNotFoundError(
-            "ucimlrepo is not installed. Install it or load data from the local CSV."
-        )
     print("Loading dataset...")
     bank_marketing = fetch_ucirepo(id=222)
     X = bank_marketing.data.features
@@ -97,7 +89,9 @@ class Preprocessor:
 
     def _transform_standardization(self, X: pd.DataFrame) -> pd.DataFrame:
         X = X.copy()
-        num_cols = [col for col in self.scaling_means_.index if col in X.columns]
+        # Use the exact columns recorded during fit to avoid dtype mismatches
+        # (e.g. a missing OHE category added back as int64 vs bool in training)
+        num_cols = self.scaling_means_.index
         stds_safe = self.scaling_stds_.replace(0, 1)
         X[num_cols] = (X[num_cols] - self.scaling_means_) / stds_safe
         return X
@@ -1284,27 +1278,13 @@ def predict_single(input_dict: dict,
     if thresholds is None:
         thresholds = [0.1, 0.2, 0.3, 0.5]
 
-    # Build a complete single-row DataFrame. This lets a frontend expose only
-    # the user-facing fields while the trained preprocessor fills the rest from
-    # training-set statistics instead of producing NaNs.
-    sample_dict = dict(input_dict)
-    for col in getattr(preprocessor, "numerical_cols_", []) or []:
-        if col not in sample_dict:
-            sample_dict[col] = float(preprocessor.numerical_means_[col])
-    for col in getattr(preprocessor, "categorical_cols_", []) or []:
-        if col not in sample_dict:
-            sample_dict[col] = preprocessor.categorical_modes_[col]
-
-    sample_df = pd.DataFrame([sample_dict])
+    # Build a single-row DataFrame that matches the original feature order
+    sample_df = pd.DataFrame([input_dict])
 
     # Transform (handles unknown→NaN, imputation, OHE, scaling)
     X_sample = preprocessor.transform(sample_df)
-    if not np.isfinite(X_sample).all():
-        X_sample = np.nan_to_num(X_sample, nan=0.0, posinf=0.0, neginf=0.0)
 
     prob = float(model.predict_proba(X_sample)[0])
-    if not np.isfinite(prob):
-        prob = 0.0
 
     predictions = {
         round(t, 2): int(prob >= t)
