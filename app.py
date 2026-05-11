@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-import MODEL1_FINAL_前端 as ml
+import MODEL1_FINAL_frontend as ml
 
 
 st.set_page_config(

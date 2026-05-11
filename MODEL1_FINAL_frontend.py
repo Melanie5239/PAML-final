@@ -1,5 +1,5 @@
 # ============================================================
-#  MODEL1_FINAL_前端.py
+#  MODEL1_FINAL_frontend.py
 #  Bank Marketing – Logistic Regression Pipeline
 #  UCI Dataset id=222  |  45,211 samples  |  16 features
 #
@@ -1377,7 +1377,7 @@ def run_full_demo(learning_rate: float = 0.01,
 
     This is the single entry point for a Streamlit frontend:
 
-        import MODEL1_FINAL_前端 as pipeline
+        import MODEL1_FINAL_frontend as pipeline
         results = pipeline.run_full_demo()
         st.write(results["dataset_summary"]["class_distribution_df"])
         ...
