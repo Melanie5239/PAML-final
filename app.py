@@ -33,43 +33,56 @@ MENU = {
 }
 
 
-LOCAL_DATA = Path(__file__).with_name("bank-additional-full.csv")
-CACHE_VERSION = "prediction-nan-fix-v2"
+PREFERRED_DATA = Path(__file__).with_name("bank-full.csv")
+FALLBACK_DATA = Path(__file__).with_name("bank-additional-full.csv")
+CACHE_VERSION = "local-data-fallback-v5"
 
 
 st.markdown(
     """
     <style>
     .stApp {
-        background: #f8fafc;
+        background: linear-gradient(135deg, #f8fbff 0%, #eef4ff 100%);
+        font-size: 18px;
     }
 
     .block-container {
-        max-width: 1280px;
-        padding-top: 2.4rem;
+        max-width: 1320px;
+        padding-top: 2.2rem;
         padding-bottom: 2rem;
     }
 
     section[data-testid="stSidebar"] {
-        background: #f1f5f9;
-        border-right: 1px solid #e2e8f0;
+        background: linear-gradient(180deg, #f6f9ff 0%, #ebf2ff 100%);
+        border-right: 1px solid rgba(59,130,246,0.10);
     }
 
-    section[data-testid="stSidebar"] [data-testid="stRadio"] > label {
-        font-size: 1.05rem;
-        font-weight: 700;
-        color: #334155;
+    section[data-testid="stSidebar"] * {
+        color: #1e3a8a !important;
+    }
+
+    section[data-testid="stSidebar"] h3 {
+        font-size: 1.55rem !important;
+        font-weight: 800 !important;
+        margin-bottom: 0.7rem !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stRadio"] p,
+    section[data-testid="stSidebar"] div[role="radiogroup"] label p {
+        font-size: 1.38rem !important;
+        font-weight: 800 !important;
+        line-height: 1.45 !important;
     }
 
     section[data-testid="stSidebar"] div[role="radiogroup"] label {
-        padding: 0.7rem 0.85rem;
-        border-radius: 8px;
-        margin-bottom: 0.2rem;
+        padding: 0.85rem 1rem;
+        border-radius: 10px;
+        margin-bottom: 0.28rem;
         background: transparent;
     }
 
     section[data-testid="stSidebar"] div[role="radiogroup"] label:hover {
-        background: #e2e8f0;
+        background: rgba(255,255,255,0.80);
     }
 
     h1, h2, h3 {
@@ -77,17 +90,123 @@ st.markdown(
         letter-spacing: 0;
     }
 
+    h1 {
+        font-size: 3.25rem !important;
+        font-weight: 850 !important;
+        line-height: 1.15 !important;
+        color: #1e3a8a !important;
+    }
+
+    h2 {
+        font-size: 2.35rem !important;
+        font-weight: 820 !important;
+        color: #1e3a8a !important;
+    }
+
+    h3 {
+        font-size: 1.85rem !important;
+        font-weight: 800 !important;
+        color: #1d4ed8 !important;
+    }
+
+    .stCaptionContainer,
+    .stCaptionContainer p {
+        font-size: 1.2rem !important;
+        color: #64748b !important;
+    }
+
+    .stMarkdown p,
+    .stInfo p,
+    .stSuccess p {
+        font-size: 1.24rem !important;
+        line-height: 1.6 !important;
+    }
+
+    .stSelectbox label,
+    .stNumberInput label,
+    .stSlider label,
+    .stRadio label,
+    .stTextInput label {
+        font-size: 1.5rem !important;
+        font-weight: 800 !important;
+        color: #1e3a8a !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        min-height: 62px !important;
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+        border-radius: 12px !important;
+    }
+
+    div[data-baseweb="select"] span,
+    div[role="listbox"] ul li,
+    div[role="option"] {
+        font-size: 1.28rem !important;
+        font-weight: 700 !important;
+    }
+
+    .stNumberInput input {
+        min-height: 60px !important;
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+    }
+
+    div[role="radiogroup"] label p,
+    div[role="radiogroup"] label span {
+        font-size: 1.3rem !important;
+        font-weight: 700 !important;
+    }
+
+    .stSlider div[data-baseweb="slider"] * {
+        font-size: 1.2rem !important;
+        font-weight: 700 !important;
+    }
+
+    .stButton > button,
+    .stFormSubmitButton > button {
+        min-height: 3.6rem !important;
+        font-size: 1.28rem !important;
+        font-weight: 800 !important;
+        border-radius: 12px !important;
+        background: linear-gradient(90deg, #3b82f6, #2563eb) !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 8px 18px rgba(37,99,235,0.18) !important;
+    }
+
     div[data-testid="metric-container"] {
         background: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 1rem;
+        border: 1px solid rgba(59,130,246,0.12);
+        border-radius: 12px;
+        padding: 1rem 1.1rem;
+        box-shadow: 0 8px 24px rgba(37,99,235,0.07);
+    }
+
+    div[data-testid="metric-container"] label {
+        font-size: 1.25rem !important;
+        font-weight: 800 !important;
+        color: #1e3a8a !important;
+    }
+
+    div[data-testid="metric-container"] [data-testid="stMetricValue"] {
+        font-size: 1.95rem !important;
+        font-weight: 850 !important;
+        color: #0f172a !important;
     }
 
     .section-note {
         color: #64748b;
-        font-size: 1.02rem;
+        font-size: 1.3rem;
         margin-bottom: 1rem;
+    }
+
+    div[data-testid="stDataFrame"] {
+        font-size: 1.2rem !important;
+    }
+
+    div[data-testid="stDataFrame"] * {
+        font-size: 1.12rem !important;
     }
     </style>
     """,
@@ -96,15 +215,17 @@ st.markdown(
 
 
 def _read_local_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    data = pd.read_csv(LOCAL_DATA, sep=";")
+    data_path = PREFERRED_DATA if PREFERRED_DATA.exists() else FALLBACK_DATA
+    data = pd.read_csv(data_path, sep=";")
     X = data.drop(columns=["y"])
     y = data[["y"]]
     return X, y
 
 
 @st.cache_data(show_spinner="Loading dataset...")
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    if LOCAL_DATA.exists():
+def load_data(data_version: str = "bank-full-v1") -> tuple[pd.DataFrame, pd.DataFrame]:
+    """data_version forces cache invalidation when the source file changes."""
+    if PREFERRED_DATA.exists() or FALLBACK_DATA.exists():
         return _read_local_data()
     with contextlib.redirect_stdout(io.StringIO()):
         return ml.load_data()
@@ -130,7 +251,6 @@ def preprocessing_demo(X_train_raw: pd.DataFrame, X_test_raw: pd.DataFrame) -> d
     return ml.run_preprocessing_demo(X_train_raw, X_test_raw)
 
 
-@st.cache_resource(show_spinner="Training model once for this session...")
 def trained_pipeline(
     X_train_raw: pd.DataFrame,
     X_test_raw: pd.DataFrame,
@@ -138,18 +258,21 @@ def trained_pipeline(
     y_test_raw: pd.DataFrame,
     cache_version: str,
 ) -> dict:
-    with contextlib.redirect_stdout(io.StringIO()):
-        return ml.train_pipeline(
-            X_train_raw,
-            X_test_raw,
-            y_train_raw,
-            y_test_raw,
-            learning_rate=0.01,
-            n_iterations=1000,
-        )
+    """Train fresh each session — no persistent cache to avoid stale preprocessing."""
+    if "pipeline_result" not in st.session_state:
+        with st.spinner("Training model (lr=0.1, 3000 iterations)..."):
+            with contextlib.redirect_stdout(io.StringIO()):
+                st.session_state["pipeline_result"] = ml.train_pipeline(
+                    X_train_raw,
+                    X_test_raw,
+                    y_train_raw,
+                    y_test_raw,
+                    learning_rate=0.1,
+                    n_iterations=3000,
+                )
+    return st.session_state["pipeline_result"]
 
 
-@st.cache_data(show_spinner=False)
 def evaluation_result(pipeline_signature: str, threshold: float) -> dict:
     state = st.session_state[pipeline_signature]
     return ml.run_evaluation(
@@ -162,13 +285,11 @@ def evaluation_result(pipeline_signature: str, threshold: float) -> dict:
     )
 
 
-@st.cache_data(show_spinner="Running threshold analysis...")
 def threshold_result(pipeline_signature: str) -> dict:
     state = st.session_state[pipeline_signature]
     return ml.run_threshold_analysis(state["model"], state["X_test"], state["y_test"])
 
 
-@st.cache_data(show_spinner="Running feature analysis...")
 def feature_result(pipeline_signature: str, top_n: int) -> dict:
     state = st.session_state[pipeline_signature]
     with contextlib.redirect_stdout(io.StringIO()):
@@ -425,7 +546,7 @@ def prediction_form(pipeline_state: dict, X_reference: pd.DataFrame):
         show_table(result["predictions_df"])
 
 
-X_raw, y_raw = load_data()
+X_raw, y_raw = load_data("bank-full-v1")
 X_train_raw, X_test_raw, y_train_raw, y_test_raw = split_data(X_raw, y_raw)
 pipeline_state = trained_pipeline(X_train_raw, X_test_raw, y_train_raw, y_test_raw, CACHE_VERSION)
 st.session_state["cached_pipeline_state"] = pipeline_state
@@ -509,7 +630,7 @@ elif selected == "Training":
     )
 
 elif selected == "Evaluation":
-    threshold = st.slider("Decision threshold", 0.05, 0.95, 0.50, 0.05)
+    threshold = st.slider("Decision threshold", 0.05, 0.95, 0.15, 0.05)
     result = evaluation_result("cached_pipeline_state", threshold)
     st.subheader("Metrics")
     show_table(result["metrics_df"])
@@ -524,43 +645,58 @@ elif selected == "Evaluation":
     show_table(result["sample_predictions_df"])
 
 elif selected == "Threshold Analysis":
-    result = threshold_result("cached_pipeline_state")
-    metric_grid(
-        {
-            "Best F1 Threshold": result["best_f1_threshold"],
-            "Best F1": result["best_f1_value"],
-            "Best Recall Threshold": result["best_recall_threshold"],
-            "Best Recall": result["best_recall_value"],
-        }
+    st.markdown("Threshold sensitivity evaluated on the held-out test set.")
+    state = st.session_state["cached_pipeline_state"]
+    thresholds = [round(t * 0.05, 2) for t in range(2, 20)]
+    rows = []
+    for t in thresholds:
+        y_pred = state["model"].predict(state["X_test"], threshold=t)
+        m = ml.evaluate(state["y_test"], y_pred)
+        rows.append({"Threshold": t,
+                     "Accuracy":  round(m["Accuracy"],  4),
+                     "Precision": round(m["Precision"], 4),
+                     "Recall":    round(m["Recall"],    4),
+                     "F1-Score":  round(m["F1-Score"],  4)})
+    sens_df = pd.DataFrame(rows)
+    best_f1  = sens_df.loc[sens_df["F1-Score"].idxmax()]
+    best_rec = sens_df.loc[sens_df["Recall"].idxmax()]
+    metric_grid({
+        "Best F1 Threshold":     float(best_f1["Threshold"]),
+        "Best F1":               float(best_f1["F1-Score"]),
+        "Best Recall Threshold": float(best_rec["Threshold"]),
+        "Best Recall":           float(best_rec["Recall"]),
+    })
+    st.subheader("Sensitivity Chart")
+    st.line_chart(sens_df.set_index("Threshold")[["Accuracy", "Precision", "Recall", "F1-Score"]])
+    st.subheader("Sensitivity Table")
+    show_table(sens_df)
+    st.info(
+        f"Best F1={float(best_f1['F1-Score']):.4f} at threshold {float(best_f1['Threshold'])}. "
+        "Lowering the threshold increases Recall (fewer missed subscribers) "
+        "at the cost of lower Precision (more unnecessary calls)."
     )
-    st.subheader("Sensitivity")
-    st.line_chart(result["sensitivity_df"].set_index("Threshold"))
-    show_table(result["sensitivity_df"])
-    st.subheader("Business Comparison")
-    show_table(result["business_df"])
-    st.info(result["interpretation"])
 
 elif selected == "Feature Analysis":
     top_n = st.slider("Top features", 5, 20, 10, 1)
-    result = feature_result("cached_pipeline_state", top_n)
-    metric_grid(
-        {
-            "Most Positive": result["most_positive_feature"],
-            "Positive Coef": result["most_positive_coef"],
-            "Most Negative": result["most_negative_feature"],
-            "Negative Coef": result["most_negative_coef"],
-        },
-        columns=2,
-    )
+    state = st.session_state["cached_pipeline_state"]
+    feature_names = state["model"].weights.__class__.__name__  # just to access
+    weights = state["model"].weights
+    names   = state["preprocessor"].get_feature_names()
+    coef_df = pd.DataFrame({"feature": names, "coefficient": weights})
+    coef_df = coef_df.reindex(coef_df["coefficient"].abs().sort_values(ascending=False).index)
+    top_pos = coef_df[coef_df["coefficient"] > 0].head(top_n).copy()
+    top_neg = coef_df[coef_df["coefficient"] < 0].head(top_n).copy()
+    metric_grid({
+        "Most Positive Feature": coef_df[coef_df["coefficient"] > 0].iloc[0]["feature"],
+        "Positive Coef":         round(float(coef_df[coef_df["coefficient"] > 0].iloc[0]["coefficient"]), 4),
+        "Most Negative Feature": coef_df[coef_df["coefficient"] < 0].iloc[0]["feature"],
+        "Negative Coef":         round(float(coef_df[coef_df["coefficient"] < 0].iloc[0]["coefficient"]), 4),
+    }, columns=2)
     col1, col2 = st.columns(2)
     with col1:
-        plot_coefficients(result["top_positive_df"], "Top Positive Coefficients", "#16a34a")
+        plot_coefficients(top_pos, "Top Positive Coefficients", "#16a34a")
     with col2:
-        plot_coefficients(result["top_negative_df"], "Top Negative Coefficients", "#dc2626")
-    st.subheader("Learning Rate Sensitivity")
-    show_table(result["lr_sensitivity_df"])
-    st.subheader("Duration Ablation")
-    show_table(result["ablation_df"])
+        plot_coefficients(top_neg, "Top Negative Coefficients", "#dc2626")
 
 elif selected == "Prediction":
     prediction_form(pipeline_state, X_raw)
