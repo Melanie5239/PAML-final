@@ -1,6 +1,7 @@
 __pycache__/
 *.py[cod]
 .vscode/
+.DS_Store
 
 lr_model.pkl
 preprocessor.pkl
